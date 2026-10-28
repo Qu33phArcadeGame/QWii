@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+  <name>Qu33ph</name>
+  <coder>Qu33ph Arcade Game</coder>
+  <version>1.0</version>
+  <release_date>20261028000000</release_date>
+  <short_description>The marker throwing game + the arcade</short_description>
+  <long_description>Qu33ph for the Wii. Swing the Wiimote to throw: hold it upright, aim with the D-pad, and flick it at the TV. The harder the swing, the harder the throw.
+
+1 PLAYER, 2 PLAYER, OLYMPICS, the slot, PlinQu33ph and the arcade: Mini Qu33ph, Qu33ph-Ball, Fidget, Bowling, Stack, Flip, Dozer, Jump and Pinball.
+
+Buttons: A select/throw, B back, + pause, - quit, 1/2 turn the marker, HOME back to the Homebrew Channel. Nunchuk, Classic Controller and GameCube pads work too. Progress saves to the SD card.</long_description>
+</app>
