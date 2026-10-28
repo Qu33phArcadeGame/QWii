@@ -1,0 +1,26 @@
+name: Build Qu33ph Wii
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build boot.dol
+        run: |
+          dkp-pacman -S --noconfirm --needed libfat-ogc || true
+          make
+          ls -la boot.dol
+      - name: Lay out the SD card folder
+        run: |
+          mkdir -p sd/apps/qu33ph
+          cp boot.dol meta.xml icon.png sd/apps/qu33ph/
+          ls -la sd/apps/qu33ph
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qu33ph-wii-sd-card
+          path: sd
