@@ -1,38 +1,37 @@
 # Qu33ph Wii — builds boot.dol with devkitPPC + libogc (the GitHub Action does this for you)
+# All the game files sit next to this Makefile. (Lines start with ">" instead of tabs, so this
+# file still works after being pasted into GitHub's editor.)
 .SUFFIXES:
 ifeq ($(strip $(DEVKITPPC)),)
 $(error DEVKITPPC is not set: install devkitPro's devkitPPC (wii-dev), or let the GitHub Action build it)
 endif
 include $(DEVKITPPC)/wii_rules
+.RECIPEPREFIX = >
 
 TARGET   := boot
 BUILD    := build
-SOURCES  := source
-INCLUDES := source
 
 CFLAGS   = -O2 -Wall -Wno-unused-function -fno-strict-aliasing -DQU_WII $(MACHDEP) $(INCLUDE)
 LDFLAGS  = $(MACHDEP) -Wl,-Map,$(notdir $@).map
 LIBS     := -lfat -lasnd -lwiiuse -lbte -logc -lm
-LIBDIRS  :=
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
-export OUTPUT  := $(CURDIR)/$(TARGET)
-export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
-export DEPSDIR := $(CURDIR)/$(BUILD)
-CFILES         := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-export LD      := $(CC)
-export OFILES  := $(CFILES:.c=.o)
-export INCLUDE := $(foreach dir,$(INCLUDES),-iquote $(CURDIR)/$(dir)) $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                  -I$(CURDIR)/$(BUILD) -I$(LIBOGC_INC)
-export LIBPATHS := -L$(LIBOGC_LIB) $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+export OUTPUT   := $(CURDIR)/$(TARGET)
+export VPATH    := $(CURDIR)
+export DEPSDIR  := $(CURDIR)/$(BUILD)
+CFILES          := $(notdir $(wildcard *.c))
+export LD       := $(CC)
+export OFILES   := $(CFILES:.c=.o)
+export INCLUDE  := -iquote $(CURDIR) -I$(CURDIR)/$(BUILD) -I$(LIBOGC_INC)
+export LIBPATHS := -L$(LIBOGC_LIB)
 
 .PHONY: $(BUILD) clean
 $(BUILD):
-	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+> @[ -d $@ ] || mkdir -p $@
+> @$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 clean:
-	rm -rf $(BUILD) $(OUTPUT).elf $(OUTPUT).dol $(OUTPUT).elf.map
+> rm -rf $(BUILD) $(OUTPUT).elf $(OUTPUT).dol $(OUTPUT).elf.map
 
 else
 DEPENDS := $(OFILES:.o=.d)
