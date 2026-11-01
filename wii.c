@@ -379,9 +379,20 @@ static u16 stickDir(float ang, float mag) {
 u16 platKeys(void) {
     WPAD_ScanPads(); PAD_ScanPads();
     u16 k = 0; motionSwing = 0;
+    /* 2P with 2+ Wiimotes: only the current player's controller counts
+     * (controller N belongs to player N). Otherwise -- 1P, menus, or a
+     * single Wiimote passed around -- every controller counts, as before. */
+    int nWii = 0;
+    for (int ch = 0; ch < 4; ch++) {
+        WPADData *wd = WPAD_Data(ch);
+        if (wd && wd->err == WPAD_ERR_NONE) nWii++;
+    }
+    int solo = (mode == M_TWO || mode == M_OLYMPICS) &&
+               (screen == S_PLAY || screen == S_HANDOFF) && nWii >= 2;
     for (int ch = 0; ch < 4; ch++) {
         WPADData *wd = WPAD_Data(ch);
         if (!wd || wd->err != WPAD_ERR_NONE) continue;
+        if (solo && ch != player) { sw[ch].armed = 0; sw[ch].cool = 0; continue; }
         u32 b = wd->btns_h;
         if (b & WPAD_BUTTON_UP) k |= KEY_UP;
         if (b & WPAD_BUTTON_DOWN) k |= KEY_DOWN;
@@ -415,6 +426,7 @@ u16 platKeys(void) {
         if (swingCheck(ch, wd)) motionSwing = 1;
     }
     for (int p = 0; p < 4; p++) {
+        if (solo && p != player) continue;
         u16 b = PAD_ButtonsHeld(p);
         if (b & PAD_BUTTON_UP) k |= KEY_UP;
         if (b & PAD_BUTTON_DOWN) k |= KEY_DOWN;
