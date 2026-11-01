@@ -109,7 +109,7 @@ enum { S_TITLE, S_PLAY, S_PAUSE, S_HANDOFF, S_RESULTS, S_HIGHS, S_SETTINGS, S_OL
        S_FIDGET_MENU, S_FIDGET, S_FIDGET_PAUSE, S_FIDGET_OVER, S_BOWL_MENU, S_BOWL, S_BOWL_PAUSE, S_BOWL_OVER,
        S_STACK_MENU, S_STACK, S_STACK_PAUSE, S_STACK_OVER, S_FLIP_MENU, S_FLIP_LEVELS, S_FLIP, S_FLIP_PAUSE, S_FLIP_OVER,
        S_DOZER_MENU, S_DOZER, S_DOZER_PAUSE, S_DOZER_OVER, S_PIN_MENU, S_PIN, S_PIN_PAUSE, S_PIN_OVER,
-       S_JUMP_MENU, S_JUMP_CHARS, S_JUMP, S_JUMP_PAUSE, S_JUMP_OVER };
+       S_JUMP_MENU, S_JUMP_CHARS, S_JUMP, S_JUMP_PAUSE, S_JUMP_OVER, S_THEMES, S_SHOP };
 extern int screen;
 enum { M_SINGLE = 1, M_TWO = 2, M_OLYMPICS = 3 };
 extern int mode;
@@ -132,7 +132,18 @@ typedef struct {
     int arcadeBest[9], arcadePlays[9];   // one slot per arcade game (ARC_*)
     // ── added in save version 3 (Jump). Older saves load untouched; these start at 0.
     int jumpBest[4], jumpChar;           // Jump: each mode's best, your runner
+    // ── added in save version 4 (shop + themes). Older saves load untouched; these start at 0,
+    //    except the default theme, which saveInit owns (see save.c).
+    int themeOwned;      // bitmask: bit t = theme t owned (bit 0 = default, always owned)
+    int curTheme;        // equipped theme (THEME_*)
+    int shopItems;       // bitmask: bit i = shop item i owned
 } SaveData;
+// ── themes: palette swaps only (draw.c); default is pixel-identical to the old game ──
+enum { THEME_DEFAULT, THEME_COMIC, THEME_NEON, THEME_SUNSET, THEME_GALAXY, THEME_INVERTED, THEME_COUNT };
+// ── shop items (prices in main.c's SHOP_PRICE) ──
+enum { ITEM_DOUBLER, ITEM_MAGNET, ITEM_EXTRA_TIME, ITEM_MEGA_BOOST, ITEM_PEEF_GUARD,
+       ITEM_GLOW, ITEM_TRAILS, ITEM_CONFETTI, ITEM_GOLDEN_SLOT, ITEM_COUNT };
+int shopOwned(int item);                 // 1 = the item was bought (save.c)
 enum { ARC_MINI, ARC_BALL, ARC_FIDGET, ARC_BOWLING, ARC_STACK, ARC_FLIP, ARC_DOZER, ARC_JUMP, ARC_PINBALL, ARC_COUNT };
 extern SaveData sv;
 extern int saveOK;
@@ -167,6 +178,9 @@ void drawFlag(int x, int y, int w, int h, int nation);
 void drawLogo(int x, int y);
 void powerMarker(int x0, int y0, float ux, float uy, float len, float power);
 void uiPalette(void);             // the fixed colours 0-63
+void themeSet(int t);             // equip theme t: re-runs uiPalette, then its palette swap (draw.c)
+u16 themeMap(u16 c);              // one RGB15 colour through the equipped theme (identity on default)
+void themeObjPal(void);           // the sprite palettes through the equipped theme (draw.c)
 enum { PAL_MENU, PAL_FIELD, PAL_SLOT, PAL_MINI, PAL_FIDGET, PAL_BOWL, PAL_STACK, PAL_FLIP, PAL_DOZER, PAL_PIN, PAL_JUMP, PAL_BALL /* +machine: keep last */ };
 void scenePalette(int which);      // 64-255: the menus (logo, coin), the field, or the slot machine
 void drawImg(const u8 *img, int w, int h, int x, int y);   // a picture, colour 0 see-through
@@ -186,6 +200,7 @@ enum { MUS_MAIN, MUS_MINI, MUS_BALL, MUS_FIDGET, MUS_BOWL, MUS_STACK, MUS_FLIP, 
 void musicSet(int track);          // switch tracks (restarts only if it changes)
 enum { OBJ_MAIN, OBJ_MINI, OBJ_BALL, OBJ_FIDGET, OBJ_BOWL, OBJ_STACK, OBJ_FLIP, OBJ_DOZER, OBJ_PIN, OBJ_JUMP, OBJ_JUMPMENU };
 void objSet(int set);              // the sprite pictures this screen needs (loaded when it changes)
+void objRefresh(void);             // force the next objSet to reload (after a theme change)
 
 // ── the match (game.c) ────────────────────────────────────────────────────
 extern int score2[2], player, p2Round, frameCount, roundFrames, totalFrames, suddenDeath;
