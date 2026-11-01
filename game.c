@@ -41,6 +41,23 @@ static void popup(float x, float y, const char *t, int c) {
 static char banner[2][24]; static int bannerT, bannerCol;
 static void showBanner(const char *a, const char *b, int c) { strncpy(banner[0], a, 23); banner[0][23] = 0; strncpy(banner[1], b ? b : "", 23); banner[1][23] = 0; bannerT = 75; bannerCol = c; }
 
+// ── shop cosmetics (game.c only; the arcade games keep their own look) ────
+// Marker Trails: past positions of each flying marker, drawn as dots.
+#define TRAIL_N 12
+static float trailX[3][TRAIL_N], trailY[3][TRAIL_N]; static int trailN[3];
+// Confetti: a burst on every QU33PH, falling for a second and a half.
+#define CONF_N 40
+static struct { int x, y, vy, dx, col; } conf[CONF_N]; static int confT;
+static void confettiBurst(void) {
+    if (!shopOwned(ITEM_CONFETTI)) return;
+    confT = 90;
+    static const int CC[5] = { C_MGREEN, C_MRED, C_MBLUE, C_YELLOW, C_CYAN };
+    for (int i = 0; i < CONF_N; i++) {
+        conf[i].x = 10 + rand() % (VIEW_W - 20); conf[i].y = 10 + rand() % 40;
+        conf[i].vy = 1 + rand() % 3; conf[i].dx = (rand() % 3) - 1; conf[i].col = CC[rand() % 5];
+    }
+}
+
 // ── sound ─────────────────────────────────────────────────────────────────
 static void play(const s8 *d, int len) { if (sv.sfxOn) sndFx(d, len); }
 void sfxThrow(int o) {
@@ -73,17 +90,30 @@ static int wsx(float wx) { return (int)((wx - VX0) * PX); }
 static int wsy(float wy) { return (int)(wy * PX) - camOff; }
 
 // ── a turn ────────────────────────────────────────────────────────────────
-static void resetSet(void) { current = 0; memset(mk, 0, sizeof mk); }
+static void resetSet(void) { current = 0; memset(mk, 0, sizeof mk); for (int i = 0; i < 3; i++) trailN[i] = 0; }
 static int setHoldT;
+// Extra Time (shop): +5 seconds on every round, 1P/2P/Olympics alike
+static int matchTimer(void) {
+    int rt = (mode == M_TWO) ? sv.timer2p : sv.timer1p;
+    if (shopOwned(ITEM_EXTRA_TIME)) rt += 5;
+    return rt;
+}
 void startMatch(void) {
     resetSet(); setHoldT = 0; roundFrames = 0; suddenDeath = 0; matchOver = 0;
-    int rt = (mode == M_TWO) ? sv.timer2p : sv.timer1p;
+    int rt = matchTimer();
     totalFrames = (mode == M_TWO) ? rt * 60 : (rt * 3 / 2) * 60;     // 1P & Olympics: sudden death for the last third
     chairX = FIELD_CX; chairY = 117.0f;
     camY = CAM_REST; lastThrown = -1; landHoldT = 0; bannerT = 0;
     for (int i = 0; i < 6; i++) pops[i].life = 0;
 }
-static void addScore(int d) { score2[player] += d; }
+static int magnetAcc;   // Coin Magnet progress: 30 score2 units (= 15 points) buys 1 coin
+static void addScore(int d) {
+    score2[player] += d;
+    if (d > 0 && shopOwned(ITEM_MAGNET)) {
+        magnetAcc += d;
+        while (magnetAcc >= 30) { magnetAcc -= 30; addCoins(1); }
+    }
+}
 static void throwMarker(float dx, float dy) {
     if (screen != S_PLAY || current >= 3) return;
     Marker *m = &mk[current];
@@ -92,6 +122,7 @@ static void throwMarker(float dx, float dy) {
     m->vx = dx * 0.2f; m->vy = dy * 0.2f; m->curve = dx * 0.0003f;
     m->spin = orient == 0 ? 0.08f : orient == 1 ? 0.12f : 0.18f;
     m->col = current; lastThrown = current; landHoldT = 0;
+    trailN[current] = 0;   // a fresh marker starts with no trail
     // Land in the orientation you picked: the marker still spins the website's amount in flight
     // (spin x 22.85 over its one second), but it starts turned so it comes to rest VERTICAL /
     // ANGLED / FLAT. Each picture's marker lies at its own angle (red & green diagonal, blue level).
@@ -107,7 +138,7 @@ static void triggerMega(Marker *m) {
     m->x = REDDOT_X; m->y = REDDOT_Y; m->vx = m->vy = 0; m->stopped = 1;
     addScore(20);
     showBanner("MEGA QU33PH", "+10", YELLOW);
-    sfxPlop(); trackMega();
+    sfxPlop(); trackMega(); confettiBurst();
 }
 static int calcRoundScore(void) {
     Marker *g = &mk[0], *r = &mk[1], *b = &mk[2];
@@ -130,13 +161,14 @@ static void tryAdvanceRound(void) {
     for (int i = 0; i < 3; i++) if (!mk[i].stopped && !mk[i].fallen) return;
     Marker *g = &mk[0], *r = &mk[1], *b = &mk[2];
     if (!b->fallen && suddenDeath && b->y > chairY) {
-        addScore(-4); popup(LEFT_EDGE + 4, chairY + 60, "PEEF -2", RED); sfxPeef(orient); trackPeef();
+        int pen = -4; if (shopOwned(ITEM_PEEF_GUARD)) pen = -2;   // Peef Guard: halve the penalty
+        addScore(pen); popup(LEFT_EDGE + 4, chairY + 60, shopOwned(ITEM_PEEF_GUARD) ? "PEEF -1" : "PEEF -2", RED); sfxPeef(orient); trackPeef();
     }
     int rs = calcRoundScore();
     addScore(rs);
     char t[16], s[10]; scoreStr(s, rs); sprintf(t, "+%s", s);
     if (!g->fallen && !r->fallen && !b->fallen && touching(g, r) && touching(r, b) && touching(g, b)) {
-        showBanner("QU33PH!", t, YELLOW); sfxPlop(); trackQu33ph(suddenDeath);
+        showBanner("QU33PH!", t, YELLOW); sfxPlop(); trackQu33ph(suddenDeath); confettiBurst();
     } else showBanner(t, 0, WHITE);
     setHoldT = 45;                                     // keep the markers (and their touch glow) up for 3/4 s, then clear
 }
@@ -144,7 +176,7 @@ static void tryAdvanceRound(void) {
 static float aimAng = -1.5708f, power; static int charging, chargeT, ph;
 void matchUpdate(void) {
     roundFrames++;
-    int rt = (mode == M_TWO) ? sv.timer2p : sv.timer1p;
+    int rt = matchTimer();
     if (mode != M_TWO && roundFrames > rt * 60 && !suddenDeath) {
         suddenDeath = 1; chairX = FIELD_CX; chairY = END_LINE_Y + 90;
         showBanner("SUDDEN DEATH", "hit the chair!", RED);
@@ -152,16 +184,23 @@ void matchUpdate(void) {
     if (roundFrames > totalFrames) { matchOver = 1; return; }
     for (int i = 0; i < current; i++) {
         Marker *m = &mk[i];
-        if (m->stopped || m->fallen) continue;
+        if (m->stopped || m->fallen) { trailN[i] = 0; continue; }
         m->life += 1.0f / 60.0f;
         if (m->life >= 1.0f) { m->stopped = 1; m->vx = m->vy = 0; sfxPlop(); }
         m->vx += m->curve;
         m->x += m->vx; m->y += m->vy;
+        if (shopOwned(ITEM_TRAILS)) {   // record the trail: a dot every 8 world units of flight
+            int n = trailN[i];
+            if (n == 0 || dist(m->x, m->y, trailX[i][n - 1], trailY[i][n - 1]) > 8.0f) {
+                if (n >= TRAIL_N) { for (int k = 1; k < TRAIL_N; k++) { trailX[i][k - 1] = trailX[i][k]; trailY[i][k - 1] = trailY[i][k]; } n = TRAIL_N - 1; }
+                trailX[i][n] = m->x; trailY[i][n] = m->y; trailN[i] = n + 1;
+            }
+        }
         if (!m->armed && m->y < START_LINE_Y) m->armed = 1;
         m->vx *= 0.94f; m->vy *= 0.94f;
         m->rot += m->spin; m->spin *= 0.96f;
         if (suddenDeath && !m->megaTriggered && dist(m->x, m->y, chairX, chairY) < chairR) {
-            if (frand() < 0.25f) triggerMega(m);
+            if (frand() < (shopOwned(ITEM_MEGA_BOOST) ? 0.5f : 0.25f)) triggerMega(m);   // Mega Boost: double the chair chance
             else {                                   // the website's gentle chair bounce
                 float dx = m->x - chairX, dy = m->y - chairY, d = dist(m->x, m->y, chairX, chairY); if (d < 0.01f) d = 1;
                 float nx = dx / d, ny = dy / d;
@@ -179,8 +218,11 @@ void matchUpdate(void) {
         if (m->x < LEFT_EDGE) {
             if (!m->deducted) {
                 int ded = suddenDeath ? 5 : 2;
-                addScore(-2 * ded); m->deducted = 1;
-                char t[12]; sprintf(t, "PEEF -%d", ded);
+                int pen = -2 * ded; if (shopOwned(ITEM_PEEF_GUARD)) pen /= 2;   // Peef Guard: halve the penalty
+                addScore(pen); m->deducted = 1;
+                char t[12];
+                if (shopOwned(ITEM_PEEF_GUARD)) { char s[10]; scoreStr(s, pen); sprintf(t, "PEEF %s", s); }
+                else sprintf(t, "PEEF -%d", ded);
                 popup(LEFT_EDGE + 4, m->y < END_LINE_Y + 40 ? END_LINE_Y + 40 : m->y, t, RED);
                 sfxPeef(orient); trackPeef();
             }
@@ -244,27 +286,40 @@ static u8 panelBg[64 * SH] EWRAM_BSS __attribute__((aligned(4)));   // the panel
 #define PANEL_X VIEW_W
 #define MAP_X (PANEL_X + 38)             // the table map's left edge on screen
 // The match (and PlinQu33ph) and each arcade game share the sprite memory: whichever screen is
-// up has its pictures loaded.
+// up has its pictures loaded. objRefresh forces the next objSet to reload (used when the theme
+// changes, so the sprite palettes re-theme even if the screen's set didn't change).
+static int objSetCur = -1;
+void objRefresh(void) { objSetCur = -1; }
 void objSet(int set) {
-    static int cur = -1;
-    if (set == cur) return;
-    cur = set;
-    if (set == OBJ_MINI) { miniObjLoad(); return; }
-    if (set == OBJ_BALL) { ballObjLoad(); return; }
-    if (set == OBJ_FIDGET) { fidgetObjLoad(); return; }
-    if (set == OBJ_BOWL) { bowlObjLoad(); return; }
-    if (set == OBJ_STACK) { stackObjLoad(); return; }
-    if (set == OBJ_FLIP) { flipObjLoad(); return; }
-    if (set == OBJ_DOZER) { dozerObjLoad(); return; }
-    if (set == OBJ_PIN) { pinObjLoad(); return; }
-    if (set == OBJ_JUMP) { jumpObjLoad(); return; }
-    if (set == OBJ_JUMPMENU) { jumpMenuObjLoad(); return; }
-    platObjTiles(T_GREEN, obj_mk_green, 2048); platObjTiles(T_RED, obj_mk_red, 2048);
-    platObjTiles(T_BLUE, obj_mk_blue, 2048); platObjTiles(T_CHAIR, obj_chair, 2048);
-    platObjTiles(T_GLOW, glow_mk_green, 2048); platObjTiles(T_GLOW + 64, glow_mk_red, 2048); platObjTiles(T_GLOW + 128, glow_mk_blue, 2048);
-    memcpy(&objPal[0], obj_mk_green_pal, 32); memcpy(&objPal[16], obj_mk_red_pal, 32);
-    memcpy(&objPal[32], obj_mk_blue_pal, 32); memcpy(&objPal[48], obj_chair_pal, 32);
-    casinoInit();
+    if (set == objSetCur) return;
+    objSetCur = set;
+    if (set == OBJ_MINI) miniObjLoad();
+    else if (set == OBJ_BALL) ballObjLoad();
+    else if (set == OBJ_FIDGET) fidgetObjLoad();
+    else if (set == OBJ_BOWL) bowlObjLoad();
+    else if (set == OBJ_STACK) stackObjLoad();
+    else if (set == OBJ_FLIP) flipObjLoad();
+    else if (set == OBJ_DOZER) dozerObjLoad();
+    else if (set == OBJ_PIN) pinObjLoad();
+    else if (set == OBJ_JUMP) jumpObjLoad();
+    else if (set == OBJ_JUMPMENU) jumpMenuObjLoad();
+    else {
+        platObjTiles(T_GREEN, obj_mk_green, 2048); platObjTiles(T_RED, obj_mk_red, 2048);
+        platObjTiles(T_BLUE, obj_mk_blue, 2048); platObjTiles(T_CHAIR, obj_chair, 2048);
+        platObjTiles(T_GLOW, glow_mk_green, 2048); platObjTiles(T_GLOW + 64, glow_mk_red, 2048); platObjTiles(T_GLOW + 128, glow_mk_blue, 2048);
+        memcpy(&objPal[0], obj_mk_green_pal, 32); memcpy(&objPal[16], obj_mk_red_pal, 32);
+        memcpy(&objPal[32], obj_mk_blue_pal, 32); memcpy(&objPal[48], obj_chair_pal, 32);
+        if (shopOwned(ITEM_GLOW))   // Marker Glow: intensify the three marker palettes
+            for (int bank = 0; bank < 3; bank++) for (int i = 0; i < 16; i++) {
+                u16 c = objPal[bank * 16 + i];
+                int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31;
+                objPal[bank * 16 + i] = RGB15(r + r / 3 + 2 > 31 ? 31 : r + r / 3 + 2,
+                                              g + g / 3 + 2 > 31 ? 31 : g + g / 3 + 2,
+                                              b + b / 3 + 2 > 31 ? 31 : b + b / 3 + 2);
+            }
+        casinoInit();
+    }
+    themeObjPal();   // the equipped theme over whatever this screen loaded (identity on default)
 }
 void gameInit(void) {
     // the panel: dark, with the whole table drawn small down its right-hand side
@@ -362,8 +417,21 @@ void matchDraw(void) {
     }
     for (int i = 0; i < 6; i++) if (pops[i].life > 0) text(wsx(pops[i].x), wsy(pops[i].y), pops[i].text, pops[i].col, 1);
     if (bannerT > 0) { textCW(0, VIEW_W, 30, banner[0], bannerCol, 2); if (banner[1][0]) textCW(0, VIEW_W, 62, banner[1], WHITE, 2); }
+    if (shopOwned(ITEM_TRAILS))   // the markers' trails, as dots in each marker's colour
+        for (int i = 0; i < 3; i++) for (int j = 0; j < trailN[i]; j += 2) { int cx = wsx(trailX[i][j]), cy = wsy(trailY[i][j]); rect(cx - 1, cy - 1, 2, 2, MCOL[i]); }
     clipAll();
     drawPanel();
+    if (confT > 0) {   // confetti falling over the field
+        confT--;
+        clipX0 = 0; clipX1 = VIEW_W; clipY0 = 0; clipY1 = SH;
+        for (int i = 0; i < CONF_N; i++) {
+            conf[i].y += conf[i].vy; conf[i].x += conf[i].dx;
+            if (conf[i].y > SH) conf[i].y = 0;
+            if (conf[i].x < 0) conf[i].x = VIEW_W - 1; if (conf[i].x >= VIEW_W) conf[i].x = 0;
+            rect(conf[i].x, conf[i].y, 2, 2, conf[i].col);
+        }
+        clipAll();
+    }
 
     // sprites: markers first (on top), then their halos, then the chair
     hideSprites(); nObj = 0;
@@ -386,7 +454,7 @@ void matchDraw(void) {
     for (int k = 0; k < haloN; k++) spriteRot(T_GLOW + halo[k] * 64, 4, haloX[k], haloY[k], haloA[k], 0);
     // touching: a pulsing gold glow, so you can see the touch that scores
     { int pz = (frameCount >> 2) & 7; pz = pz < 4 ? pz : 7 - pz;
-      objPal[64 + 2] = RGB15(31, 22 + pz * 2, 4 + pz * 3); objPal[64 + 1] = RGB15(18, 12 + pz, 2 + pz); }
+      objPal[64 + 2] = themeMap(RGB15(31, 22 + pz * 2, 4 + pz * 3)); objPal[64 + 1] = themeMap(RGB15(18, 12 + pz, 2 + pz)); }
     if (suddenDeath && nObj < 32) {
         int cx = wsx(chairX), cy = wsy(chairY);
         if (cx > -32 && cx < VIEW_W + 32 && cy > -32 && cy < SH + 32) {
