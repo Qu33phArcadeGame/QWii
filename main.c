@@ -56,12 +56,12 @@ static void matchFinished(void) {
 }
 
 // ── title: the logo, coins and the slot + PlinQu33ph on the left, the main menu down the right ──
-#define TITLE_N 8
-static const char *TITLE_ITEMS[TITLE_N] = { "1 PLAYER", "2 PLAYER", "OLYMPICS", "HIGH SCORES", "SETTINGS", "SLOT", "PLINQU33PH", "ARCADE" };
+#define TITLE_N 10
+static const char *TITLE_ITEMS[TITLE_N] = { "1 PLAYER", "2 PLAYER", "OLYMPICS", "HIGH SCORES", "SETTINGS", "THEMES", "SLOT", "PLINQU33PH", "ARCADE", "SHOP" };
 static void titleLayout(void) {
-    for (int i = 0; i < 5; i++) { B[i] = (Btn){ 124, 8 + i * 30, 112, 25, "", 0, 0 }; strcpy(B[i].label, TITLE_ITEMS[i]); }
-    for (int i = 5; i < 8; i++) { B[i] = (Btn){ 6, 88 + (i - 5) * 24, 112, 22, "", 0, 0 }; strcpy(B[i].label, TITLE_ITEMS[i]); }
-    B[7].col = GOLD;
+    for (int i = 0; i < 6; i++) { B[i] = (Btn){ 124, 8 + i * 24, 112, 22, "", 0, 0 }; strcpy(B[i].label, TITLE_ITEMS[i]); }
+    for (int i = 6; i < 10; i++) { B[i] = (Btn){ 6, 88 + (i - 6) * 17, 112, 20, "", 0, 0 }; strcpy(B[i].label, TITLE_ITEMS[i]); }
+    B[8].col = GOLD;
 }
 static void drawTitle(void) {
     fillScreen(DARK);
@@ -79,12 +79,12 @@ static void drawTitle(void) {
 }
 // up/down within a column (wrapping), left/right hop between the columns
 static void titleNav(void) {
-    int right = sel < 5;
-    if (kDown & KEY_DOWN) sel = right ? (sel + 1) % 5 : 5 + (sel - 4) % 3;
-    if (kDown & KEY_UP) sel = right ? (sel + 4) % 5 : 5 + (sel - 3) % 3;
+    int right = sel < 6;
+    if (kDown & KEY_DOWN) sel = right ? (sel + 1) % 6 : 6 + (sel - 5) % 4;
+    if (kDown & KEY_UP) sel = right ? (sel + 5) % 6 : 6 + (sel - 3) % 4;
     if (kDown & (KEY_LEFT | KEY_RIGHT)) {
         int cy = B[sel].y + B[sel].h / 2, best = sel, bd = 1 << 30;
-        for (int i = right ? 5 : 0; i < (right ? 8 : 5); i++) { int d = B[i].y + B[i].h / 2 - cy; if (d < 0) d = -d; if (d < bd) { bd = d; best = i; } }
+        for (int i = right ? 6 : 0; i < (right ? 10 : 6); i++) { int d = B[i].y + B[i].h / 2 - cy; if (d < 0) d = -d; if (d < bd) { bd = d; best = i; } }
         sel = best;
     }
 }
@@ -98,9 +98,11 @@ static void inputTitle(void) {
         case 2: goScreen(S_OLY_SELECT); break;
         case 3: highTab = 0; goScreen(S_HIGHS); break;
         case 4: goScreen(S_SETTINGS); break;
-        case 5: goScreen(S_SLOT); break;
-        case 6: goScreen(S_PLINKO); break;
-        case 7: goScreen(S_ARCADE); break;
+        case 5: goScreen(S_THEMES); break;
+        case 6: goScreen(S_SLOT); break;
+        case 7: goScreen(S_PLINKO); break;
+        case 8: goScreen(S_ARCADE); break;
+        case 9: goScreen(S_SHOP); break;
     }
 }
 
@@ -197,6 +199,89 @@ static void inputSettings(void) {
     saveWrite();
 }
 
+// ── themes + shop: spend the coins you earn (the website's shop, on the Wii) ─
+static const char *THEME_NAMES[THEME_COUNT] = { "CLASSIC", "COMIC", "NEON", "GOLDEN HOUR", "GALAXY", "INVERTED" };
+static const int THEME_PRICE[THEME_COUNT] = { 0, 50, 50, 50, 50, 50 };
+static const char *SHOP_NAMES[ITEM_COUNT] = { "COIN DOUBLER", "COIN MAGNET", "EXTRA TIME", "MEGA BOOST", "PEEF GUARD",
+    "MARKER GLOW", "MARKER TRAILS", "CONFETTI", "GOLDEN SLOTS" };
+static const int SHOP_PRICE[ITEM_COUNT] = { 100, 50, 80, 60, 50, 40, 30, 30, 100 };
+static const char *SHOP_DESC[ITEM_COUNT] = { "Earn 2x coins from everything", "+1 coin per 15 points scored", "+5 seconds on every round",
+    "Higher chance of a mega qu33ph", "Halve out-of-bounds penalties", "Intense colour glow on markers",
+    "Markers leave a colour trail", "Confetti burst on every QU33PH", "5 and 10 coin spins, bigger payouts" };
+static char shopMsg[32]; static int shopMsgT;
+static void coinBalance(void) {   // the balance, top right (as on the title screen)
+    char s[16]; sprintf(s, "%d", sv.coins);
+    int w = COIN_W + 3 + textW(s, 1);
+    coinCount(SW - 4 - w, 4, 0);
+}
+static void themesLayout(void) {
+    for (int i = 0; i < THEME_COUNT; i++) {
+        B[i].x = 4; B[i].y = 26 + i * 20; B[i].w = 232; B[i].h = 18; B[i].dim = 0;
+        int owned = (sv.themeOwned >> i) & 1;
+        B[i].col = sv.curTheme == i ? LIME : 0;
+        if (!owned) B[i].dim = sv.coins < THEME_PRICE[i];
+        if (sv.curTheme == i) sprintf(B[i].label, "%s  EQUIPPED", THEME_NAMES[i]);
+        else if (owned) sprintf(B[i].label, "%s  OWNED", THEME_NAMES[i]);
+        else sprintf(B[i].label, "%s  %d", THEME_NAMES[i], THEME_PRICE[i]);
+    }
+}
+static void drawThemes(void) {
+    themesLayout();
+    fillScreen(DARK);
+    textC(2, "THEMES", GOLD, 1);
+    coinBalance();
+    drawBtns(B, THEME_COUNT, sel);
+    if (shopMsgT > 0) { shopMsgT--; textC(148, shopMsg, GOLD, 1); }
+    textS(4, 150, "B back", GREY);
+}
+static void inputThemes(void) {
+    themesLayout();
+    if (kDown & KEY_B) { goScreen(S_TITLE); return; }
+    int h = btnInput(B, THEME_COUNT, &sel, 1);
+    if (h < 0) return;
+    if ((sv.themeOwned >> h) & 1) {
+        if (sv.curTheme == h) strcpy(shopMsg, "ALREADY EQUIPPED");
+        else { sv.curTheme = h; themeSet(h); objRefresh(); strcpy(shopMsg, "EQUIPPED!"); }
+    } else if (sv.coins >= THEME_PRICE[h]) {
+        spendCoins(THEME_PRICE[h]); sv.themeOwned |= 1 << h; sv.curTheme = h; themeSet(h); objRefresh();
+        strcpy(shopMsg, "BOUGHT & EQUIPPED!");
+    } else sprintf(shopMsg, "NEED %d / HAVE %d", THEME_PRICE[h], sv.coins);
+    shopMsgT = 120;
+    saveWrite();
+}
+static void shopLayout(void) {
+    for (int i = 0; i < ITEM_COUNT; i++) {
+        B[i].x = 4 + (i % 2) * 118; B[i].y = 26 + (i / 2) * 22; B[i].w = 114; B[i].h = 20; B[i].dim = 0;
+        int owned = (sv.shopItems >> i) & 1;
+        B[i].col = owned ? LIME : 0;
+        if (!owned) B[i].dim = sv.coins < SHOP_PRICE[i];
+        if (owned) sprintf(B[i].label, "%s OWNED", SHOP_NAMES[i]);
+        else sprintf(B[i].label, "%s %d", SHOP_NAMES[i], SHOP_PRICE[i]);
+    }
+}
+static void drawShop(void) {
+    shopLayout();
+    fillScreen(DARK);
+    textC(2, "SHOP", GOLD, 1);
+    coinBalance();
+    drawBtns(B, ITEM_COUNT, sel);
+    if (shopMsgT > 0) { shopMsgT--; textC(140, shopMsg, GOLD, 1); }
+    else if (sel >= 0 && sel < ITEM_COUNT) textC(140, SHOP_DESC[sel], GREY, 1);
+    textS(4, 150, "B back", GREY);
+}
+static void inputShop(void) {
+    shopLayout();
+    if (kDown & KEY_B) { goScreen(S_TITLE); return; }
+    int h = btnInput(B, ITEM_COUNT, &sel, 2);
+    if (h < 0) return;
+    if ((sv.shopItems >> h) & 1) strcpy(shopMsg, "ALREADY OWNED");
+    else if (sv.coins >= SHOP_PRICE[h]) {
+        spendCoins(SHOP_PRICE[h]); sv.shopItems |= 1 << h; strcpy(shopMsg, "BOUGHT!");
+    } else sprintf(shopMsg, "NEED %d / HAVE %d", SHOP_PRICE[h], sv.coins);
+    shopMsgT = 120;
+    saveWrite();
+}
+
 // ── name entry: on-screen keyboard (D-pad + A; B deletes; START done) ─────
 static const char KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 static void nameLayout(void) {
@@ -289,6 +374,7 @@ int main(void) {
 #endif
     uiPalette();
     saveInit();
+    themeSet(sv.curTheme);   // the equipped theme, from the save (default on a fresh/old save)
 #ifdef GBA_SIM
     if (getenv("SIM_COINS")) sv.coins = atoi(getenv("SIM_COINS"));     // (test harness only)
 #endif
@@ -330,6 +416,8 @@ int main(void) {
             case S_RESULTS: inputResults(); break;
             case S_HIGHS: inputHighs(); break;
             case S_SETTINGS: inputSettings(); break;
+            case S_THEMES: inputThemes(); break;
+            case S_SHOP: inputShop(); break;
             case S_OLY_SELECT: inputOlySelect(); break;
             case S_OLY_BRACKET: inputOlyBracket(); break;
             case S_NAME: inputName(); break;
@@ -399,6 +487,8 @@ int main(void) {
             case S_RESULTS: drawResults(); break;
             case S_HIGHS: drawHighs(); break;
             case S_SETTINGS: drawSettings(); break;
+            case S_THEMES: drawThemes(); break;
+            case S_SHOP: drawShop(); break;
             case S_OLY_SELECT: drawOlySelect(); break;
             case S_OLY_BRACKET: drawOlyBracket(); break;
             case S_NAME: drawName(); break;
