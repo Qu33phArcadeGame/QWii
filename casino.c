@@ -47,8 +47,17 @@ void updateSlot(void) {
         saveWrite();
     }
 }
-static Btn slotB[4];
+static Btn slotB[6];
 static void slotLayout(void) {
+    if (shopOwned(ITEM_GOLDEN_SLOT)) {   // Golden Slot Machine: 5 and 10 coin spins (payouts scale with the bet)
+        slotB[0] = (Btn){ 174, 26, 64, 22, "SPIN 1", 0, sv.coins < 1 };
+        slotB[1] = (Btn){ 174, 48, 64, 22, "SPIN 3", 0, sv.coins < 3 };
+        slotB[2] = (Btn){ 174, 70, 64, 22, "SPIN 5", 0, sv.coins < 5 };
+        slotB[3] = (Btn){ 174, 92, 64, 22, "SPIN 10", 0, sv.coins < 10 };
+        slotB[4] = (Btn){ 174, 114, 64, 22, "", 0, 0 }; strcpy(slotB[4].label, slotPayT ? "HIDE" : "PAYS");
+        slotB[5] = (Btn){ 174, 136, 64, 22, "BACK", 0, 0 };
+        return;
+    }
     slotB[0] = (Btn){ 174, 26, 64, 24, "SPIN 1", 0, sv.coins < 1 };
     slotB[1] = (Btn){ 174, 54, 64, 24, "SPIN 3", 0, sv.coins < 3 };
     slotB[2] = (Btn){ 174, 82, 64, 24, "", 0, 0 }; strcpy(slotB[2].label, slotPayT ? "HIDE" : "PAYS");
@@ -74,12 +83,22 @@ void drawSlot(void) {
     }
     coinCount(176, 4, 1);
     slotLayout();
-    drawBtns(slotB, 4, slotSel);
-    textS(176, 140, "1 or 3 a", GREY); textS(176, 150, "spin", GREY);
+    drawBtns(slotB, shopOwned(ITEM_GOLDEN_SLOT) ? 6 : 4, slotSel);
+    if (!shopOwned(ITEM_GOLDEN_SLOT)) { textS(176, 140, "1 or 3 a", GREY); textS(176, 150, "spin", GREY); }
 }
 void inputSlot(void) {
     if (kDown & KEY_B) { goScreen(S_TITLE); return; }
     slotLayout();
+    if (shopOwned(ITEM_GOLDEN_SLOT)) {
+        int h = btnInput(slotB, 6, &slotSel, 1);
+        if (h == 0) spin(1);
+        if (h == 1) spin(3);
+        if (h == 2) spin(5);
+        if (h == 3) spin(10);
+        if (h == 4) slotPayT = !slotPayT;
+        if (h == 5) goScreen(S_TITLE);
+        return;
+    }
     int h = btnInput(slotB, 4, &slotSel, 1);
     if (h == 0) spin(1);
     if (h == 1) spin(3);
