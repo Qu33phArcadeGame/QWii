@@ -45,11 +45,43 @@ void uiPalette(void) {
     u16 top = RGB15(7, 7, 7), mid = RGB15(2, 2, 2), end = RGB15(0, 0, 0);
     for (int i = 0; i < 32; i++) bgPal[C_GRAD0 + i] = i < 15 ? mix15(top, mid, i, 15) : mix15(mid, end, i - 15, 17);
 }
+// ── themes: palette swaps only — no art is redrawn, and default is identity,
+//    so the classic look is pixel-identical. Applied to the fixed colours (0-63),
+//    the scene palettes (64-255, at copy time) and the sprite palettes (themeObjPal).
+static int themeId = 0;
+static int cl31(int v) { return v < 0 ? 0 : v > 31 ? 31 : v; }
+static u16 themeMapC(u16 c) {
+    int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31;
+    switch (themeId) {
+        case THEME_COMIC: { int y = (r + g + b) / 3; return RGB15(y, y, y); }                       // black & white
+        case THEME_NEON: { int a = (r + g + b) / 3;                                                // synthwave: saturate hard
+            return RGB15(cl31(a + (r - a) * 2), cl31(a + (g - a) * 2), cl31(a + (b - a) * 2)); }
+        case THEME_SUNSET:                                                                          // golden hour: warm amber
+            return RGB15(cl31(r + 5), g * 4 / 5, b / 2);
+        case THEME_GALAXY:                                                                          // deep space: dark, blue-purple
+            return RGB15(r * 3 / 5, g * 3 / 5, cl31(b * 6 / 5 + 3));
+        case THEME_INVERTED: return RGB15(31 - r, 31 - g, 31 - b);                                   // every colour flipped
+        default: return c;
+    }
+}
+u16 themeMap(u16 c) { return themeId == THEME_DEFAULT ? c : themeMapC(c); }
+static int sceneCur = -1;      // scenePalette's cache; themeSet resets it so the scene re-copies
+void themeSet(int t) {
+    if (t < 0 || t >= THEME_COUNT) t = 0;
+    themeId = t;
+    uiPalette();
+    if (t != THEME_DEFAULT) for (int i = 0; i < 64; i++) bgPal[i] = themeMapC(bgPal[i]);
+    sceneCur = -1;
+}
+void themeObjPal(void) {
+    if (themeId == THEME_DEFAULT) return;
+    for (int i = 0; i < 256; i++) objPal[i] = themeMapC(objPal[i]);
+}
 void scenePalette(int which) {
-    static int cur = -1;
-    if (cur == which) return;
-    cur = which;
+    if (sceneCur == which) return;
+    sceneCur = which;
     memcpy(&bgPal[64], which >= PAL_BALL ? bb_pal[which - PAL_BALL] : which == PAL_FIELD ? field_pal : which == PAL_SLOT ? slot_pal : which == PAL_MINI ? minit_pal : which == PAL_FIDGET ? fd_pal : which == PAL_BOWL ? bwl_pal : which == PAL_STACK ? stw_pal : which == PAL_FLIP ? fl_pal : which == PAL_DOZER ? dz_pal8 : which == PAL_PIN ? pb_pal8 : which == PAL_JUMP ? jump_pal : logo_pal, 192 * 2);
+    if (themeId != THEME_DEFAULT) for (int i = 64; i < 256; i++) bgPal[i] = themeMapC(bgPal[i]);
 }
 
 // ── pixels ────────────────────────────────────────────────────────────────
@@ -303,7 +335,7 @@ static void powerMarker_(int x0, int y0, float ux, float uy, float len, float po
     const int H = 14, ol = 2, capL = 10, capW = 11, r = 3, cy = (H - capW) / 2;
     int bodyL = L - capL + ol, fillL = power > 0 ? (int)((bodyL - 2 * ol) * power + 1) : 0;
     int pr = (int)(power * 31);
-    bgPal[C_POWER] = RGB15(31, 31 - pr * 2 / 3, pr < 16 ? 31 - pr * 2 : 0);
+    bgPal[C_POWER] = themeMap(RGB15(31, 31 - pr * 2 / 3, pr < 16 ? 31 - pr * 2 : 0));
     for (int j = 0; j < H; j++) {
         u8 *row = &spr[j * L];
         int a, b, ia, ib, ca, cb, cia, cib;
